@@ -15,7 +15,7 @@ var w http.ResponseWriter
 var req *http.Request
 var count expvar.Int
 var handler = func(w http.ResponseWriter, req *http.Request) {
-//	log.Println(req.URL.RawQuery)
+	//	log.Println(req.URL.RawQuery)
 }
 
 func init() {

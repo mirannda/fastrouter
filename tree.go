@@ -26,6 +26,7 @@ const (
 * radixTreeNode
 *************************************************************************/
 
+// radixTreeNode represents a radix tree node.
 type radixTreeNode struct {
 	chunk    string
 	isParam  bool
@@ -35,7 +36,16 @@ type radixTreeNode struct {
 	children []*radixTreeNode
 }
 
+// parseParam returns
 func parseParam(path string) (name, value, newPath string) {
+	if path == "" {
+		return
+	}
+
+	if path[0] != OpenTag {
+		panic("path[0] should be OpenTag")
+	}
+
 	// path[0] must be OpenTag.
 	for i := 0; i < len(path); i++ {
 		if path[i] == CloseTag && (i == len(path)-1 || path[i+1] == Slash) {
@@ -53,6 +63,9 @@ func parseParam(path string) (name, value, newPath string) {
 	panic("tag not closed in " + path)
 }
 
+// childIndex returns the index of child. When the children's number is less
+// than Threshold, it just finds the child by order. Otherwise it will use
+// binary search.
 func (node *radixTreeNode) childIndex(target byte) int {
 	if len(node.indices) < Threshold {
 		return strings.IndexByte(node.indices, target)
@@ -74,7 +87,8 @@ func (node *radixTreeNode) childIndex(target byte) int {
 	return -1
 }
 
-// add a none param child
+// addChild insert a none-param child to the children.
+// The indices will be ordered.
 func (node *radixTreeNode) addChild(child *radixTreeNode) {
 	var i int
 
@@ -91,8 +105,9 @@ func (node *radixTreeNode) addChild(child *radixTreeNode) {
 	)
 }
 
+// insert inserts a path to the radix tree node.
 func (node *radixTreeNode) insert(
-	path string, handler http.HandlerFunc) *radixTreeNode {
+	path, origin string, handler http.HandlerFunc) *radixTreeNode {
 
 	var index int
 
@@ -116,7 +131,7 @@ func (node *radixTreeNode) insert(
 				children: make([]*radixTreeNode, 1),
 			}
 			node.children[0] = (*radixTreeNode)(nil).insert(
-				path[index:], handler,
+				path[index:], origin, handler,
 			)
 			return node
 		}
@@ -142,7 +157,8 @@ func (node *radixTreeNode) insert(
 		if path != "" {
 			node.indices = string(path[0])
 			node.children = append(
-				node.children, (*radixTreeNode)(nil).insert(path, handler),
+				node.children,
+				(*radixTreeNode)(nil).insert(path, origin, handler),
 			)
 		} else {
 			node.handler = handler
@@ -154,7 +170,10 @@ func (node *radixTreeNode) insert(
 	// node is not nil and node is param
 	if node.isParam {
 		if path[0] != OpenTag {
-			panic(path + " conflicts with " + node.chunk)
+			log.Panicf(
+				"path '%s' conflicts with existed path %s",
+				origin, node.chunk,
+			)
 		}
 
 		// validate the param
@@ -163,13 +182,17 @@ func (node *radixTreeNode) insert(
 			node.regex != nil && value == "" ||
 			node.regex == nil && value != "" ||
 			node.regex != nil && value != "" && node.regex.String() != value {
-			panic(path + ": conflicts with existed path " + node.regex.String())
+
+			log.Panicf(
+				"path '%s' conflicts with existed path %s",
+				origin, node.regex,
+			)
 		}
 
 		// inserting finished
 		if newPath == "" {
 			if node.handler != nil {
-				panic("overwrite handler: " + path)
+				log.Panicf("path '%s' exists", origin)
 			}
 			node.handler = handler
 			return node
@@ -180,16 +203,19 @@ func (node *radixTreeNode) insert(
 		// deal with the left path
 		j := strings.IndexByte(node.indices, path[0])
 		if j != -1 {
-			node.children[j] = node.children[j].insert(path, handler)
+			node.children[j] = node.children[j].insert(path, origin, handler)
 		} else {
-			node.addChild((*radixTreeNode)(nil).insert(path, handler))
+			node.addChild((*radixTreeNode)(nil).insert(path, origin, handler))
 		}
 		return node
 	}
 
 	// node is not nil and node is common path
 	if path[0] == OpenTag {
-		panic(path + " conflicts with " + node.chunk)
+		log.Panicf(
+			"path '%s' conflicts with existed path %s",
+			origin, node.chunk,
+		)
 	}
 
 	i, j, m, n := 0, 0, len(node.chunk), len(path)
@@ -228,11 +254,11 @@ func (node *radixTreeNode) insert(
 	if j != -1 {
 		child = node.children[j]
 	}
-	child = child.insert(path, handler)
+	child = child.insert(path, origin, handler)
 
 	// since node already has a none param child
 	if child.isParam {
-		panic(path + " conflicts with existed paths")
+		log.Panicf("path '%s' conflicts with existed path", origin)
 	}
 
 	if j == -1 {
@@ -246,31 +272,41 @@ func (node *radixTreeNode) insert(
 * radixTree
 *************************************************************************/
 
-const N = 1000000
+const chanSize = 1000000
 
+// radixTree represents a radix tree.
 type radixTree struct {
 	root     *radixTreeNode
 	syncPool *sync.Pool
 	chanPool chan *bytes.Buffer
 }
 
+// newRadixTree returns a radix tree pointer.
 func newRadixTree() *radixTree {
 	tree := &radixTree{
 		syncPool: &sync.Pool{},
-		chanPool: make(chan *bytes.Buffer, N),
+		chanPool: make(chan *bytes.Buffer, chanSize),
 	}
 
-	for i := 0; i < N; i++ {
+	for i := 0; i < chanSize; i++ {
 		tree.chanPool <- new(bytes.Buffer)
 	}
 
 	return tree
 }
 
+// insert inserts a path to the radix tree.
 func (tree *radixTree) insert(path string, handler http.HandlerFunc) {
-	tree.root = tree.root.insert(path, handler)
+	path = strings.Trim(path, " ")
+	if path == "" {
+		path = "/"
+	} else if path[0] != '/' {
+		path = "/" + path
+	}
+	tree.root = tree.root.insert(path, path, handler)
 }
 
+// handler returns a handler according to the url path.
 func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 	var buffer *bytes.Buffer
 
@@ -287,21 +323,14 @@ func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 	return
 }
 
-type puppetBuffer struct {
+// shadowBuffer represents the shadow of bytes.Buffer.
+type shadowBuffer struct {
 	buf []byte
 	off int
 }
 
-// for worker pool
-func (tree *radixTree) searchWorker (p *packet, buffer *bytes.Buffer) {
-	handler := tree.search(p.req, buffer)
-	if handler == nil {
-		http.NotFoundHandler().ServeHTTP(*p.w, p.req)
-		return
-	}
-	handler.ServeHTTP(*p.w, p.req)
-}
-
+// search finds the handler by url path. It will return nil if handler doesn't
+// exist.
 func (tree *radixTree) search(
 	req *http.Request, buffer *bytes.Buffer) http.HandlerFunc {
 
@@ -324,7 +353,6 @@ func (tree *radixTree) search(
 
 			value = path[start:i]
 			if node.regex != nil && !node.regex.MatchString(value) {
-				log.Println(node.regex, value)
 				return nil
 			}
 
@@ -365,7 +393,7 @@ func (tree *radixTree) search(
 	}
 
 	if node.handler != nil && buffer.Len() > 0 {
-		b := (*puppetBuffer)(unsafe.Pointer(buffer))
+		b := (*shadowBuffer)(unsafe.Pointer(buffer))
 		bs := b.buf[b.off:]
 		req.URL.RawQuery += *(*string)(unsafe.Pointer(&bs))
 	}

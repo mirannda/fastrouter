@@ -1,17 +1,20 @@
 package fastrouter
 
 import (
-	"net/http"
-	"strings"
 	"fmt"
+	"net/http"
+	"path"
+	"strings"
 )
 
 const (
-	GET    = "GET"
-	POST   = "POST"
-	PUT    = "PUT"
-	PATCH  = "PATCH"
-	DELETE = "DELETE"
+	DELETE  = "DELETE"
+	GET     = "GET"
+	HEAD    = "HEAD"
+	OPTIONS = "OPTIONS"
+	PATCH   = "PATCH"
+	POST    = "POST"
+	PUT     = "PUT"
 )
 
 // Router represents the router for the request.
@@ -33,6 +36,7 @@ func NewRouter(notFoundHandler http.Handler) *Router {
 	}
 }
 
+// register add a handler to the router according the method and path.
 func (router *Router) register(method, path string, handler http.HandlerFunc) {
 	method = strings.ToUpper(method)
 
@@ -59,9 +63,29 @@ func (router *Router) Handle(
 	}
 }
 
+// DELETE is a wrapper of Handle with DELETE method.
+func (router *Router) DELETE(path string, handler http.HandlerFunc) {
+	router.register(DELETE, path, handler)
+}
+
 // GET is a wrapper of Handle with GET method.
 func (router *Router) GET(path string, handler http.HandlerFunc) {
 	router.register(GET, path, handler)
+}
+
+// HEAD is a wrapper of Handle with HEAD method.
+func (router *Router) HEAD(path string, handler http.HandlerFunc) {
+	router.register(HEAD, path, handler)
+}
+
+// OPTIONS is a wrapper of Handle with OPTIONS method.
+func (router *Router) OPTIONS(path string, handler http.HandlerFunc) {
+	router.register(OPTIONS, path, handler)
+}
+
+// PATCH is a wrapper of Handle with PATCH method.
+func (router *Router) PATCH(path string, handler http.HandlerFunc) {
+	router.register(PATCH, path, handler)
 }
 
 // POST is a wrapper of Handle with POST method.
@@ -72,16 +96,6 @@ func (router *Router) POST(path string, handler http.HandlerFunc) {
 // PUT is a wrapper of Handle with PUT method.
 func (router *Router) PUT(path string, handler http.HandlerFunc) {
 	router.register(PUT, path, handler)
-}
-
-// PATCH is a wrapper of Handle with PATCH method.
-func (router *Router) PATCH(path string, handler http.HandlerFunc) {
-	router.register(PATCH, path, handler)
-}
-
-// DELETE is a wrapper of Handle with DELETE method.
-func (router *Router) DELETE(path string, handler http.HandlerFunc) {
-	router.register(DELETE, path, handler)
 }
 
 // ServeHTTP implements interface http.Handler.
@@ -103,6 +117,8 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	handler(w, req)
 }
 
+// insertSubtreePath traverses the radix tree in dfs, finds all paths
+// and then re-inserts them.
 func (router *Router) insertSubtreePath(
 	node *radixTreeNode, method, path string) {
 
@@ -112,9 +128,11 @@ func (router *Router) insertSubtreePath(
 
 	if node.isParam {
 		if node.regex != nil {
-			path += fmt.Sprintf("{%s:%s}", node.chunk, node.regex.String())
+			path += fmt.Sprintf(
+				"%s%s:%s%s", OpenTag, node.chunk, node.regex, CloseTag,
+			)
 		} else {
-			path += fmt.Sprintf("{%s}", node.chunk)
+			path += fmt.Sprintf("%s%s%s", OpenTag, node.chunk, CloseTag)
 		}
 	} else {
 		path += node.chunk
@@ -129,14 +147,24 @@ func (router *Router) insertSubtreePath(
 	}
 }
 
+// SubRouter adds a prefixed router.
 func (router *Router) SubRouter(prefix string, subrouter *Router) {
+	prefix = path.Clean(strings.TrimRight(prefix, "/"))
+	if prefix == "" {
+		return
+	}
+
+	if prefix[0] != Slash {
+		prefix = fmt.Sprintf("/%s", prefix)
+	}
+
 	for i, tree := range subrouter.trees {
 		router.insertSubtreePath(tree.root, subrouter.methods[i], prefix)
 	}
 }
 
 // NOTE: THIS IS ONLY FOR DEBUG.
-func (router *Router) Traverse() {
+func (router *Router) traverse() {
 	for _, tree := range router.trees {
 		tree.traverse()
 	}
