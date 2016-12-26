@@ -102,8 +102,9 @@ func (router *Router) PUT(path string, handler http.HandlerFunc) {
 func (router *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var handler http.HandlerFunc
 
-	for i, method := range router.methods {
-		if method == req.Method {
+	n := len(router.methods)
+	for i := 0; i < n; i++ {
+		if router.methods[i] == req.Method {
 			handler = router.trees[i].handler(req)
 			break
 		}

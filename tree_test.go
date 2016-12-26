@@ -36,7 +36,9 @@ func TestParseParam(t *testing.T) {
 
 func TestRadixTreeNode(t *testing.T) {
 	// insert /aa/
-	node := (*radixTreeNode)(nil).insert("/aa/{param1:}/{param2:\\d+}", handler)
+	path := "/aa/{param1:}/{param2:\\d+}"
+
+	node := (*radixTreeNode)(nil).insert(path, path, handler)
 	if node.chunk != "/aa/" || node.indices != "" || node.isParam ||
 		node.regex != nil || node.handler != nil || len(node.children) != 1 {
 		t.Fatal("case 0", node)
@@ -56,28 +58,28 @@ func TestRadixTreeNode(t *testing.T) {
 	}
 
 	// insert /ab/
-	node = node.insert("/ab/", handler)
+	node = node.insert("/ab/", "/ab/", handler)
 	if node.chunk != "/a" || node.indices != "ab" || node.isParam ||
 		node.regex != nil || node.handler != nil {
 		t.Fatal("case 3", node)
 	}
 
 	// insert /a
-	node = node.insert("/a", handler)
+	node = node.insert("/a", "/a", handler)
 	if node.chunk != "/a" || node.indices != "ab" || node.isParam ||
 		node.regex != nil || node.handler == nil {
 		t.Fatal("case 4", node)
 	}
 
 	// insert /a/
-	node = node.insert("/a/", handler)
+	node = node.insert("/a/", "/a/", handler)
 	if node.chunk != "/a" || node.indices != "/ab" || node.isParam ||
 		node.regex != nil || node.handler == nil {
 		t.Fatal("case 5", node)
 	}
 
 	// insert /ac/
-	node = node.insert("/ac", handler)
+	node = node.insert("/ac", "/ac", handler)
 	if node.chunk != "/a" || node.indices != "/abc" || node.isParam ||
 		node.regex != nil || node.handler == nil {
 		t.Fatal("case 5", node)

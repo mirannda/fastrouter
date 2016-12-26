@@ -31,7 +31,8 @@ func TestPath(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if out := cleanPath(c.in, buffer); out != c.out {
+		cleanPath(c.in, buffer)
+		if out := buffer.String(); out != c.out {
 			t.Fatal(c, out)
 		}
 	}

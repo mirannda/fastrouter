@@ -6,12 +6,14 @@ import (
 )
 
 // cleanPath cleans the path without allocation.
-func cleanPath(path string, buffer *bytes.Buffer) string {
+func cleanPath(path string, buffer *bytes.Buffer) {
+	buffer.Reset()
+
 	if path == "" {
-		return "/"
+		buffer.WriteByte(Slash)
+		return
 	}
 
-	buffer.Reset()
 	if path[0] != Slash {
 		buffer.WriteByte(Slash)
 	}
@@ -57,6 +59,4 @@ func cleanPath(path string, buffer *bytes.Buffer) string {
 		}
 		i = j
 	}
-
-	return buffer.String()
 }

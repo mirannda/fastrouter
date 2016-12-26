@@ -36,7 +36,6 @@ type radixTreeNode struct {
 	children []*radixTreeNode
 }
 
-// parseParam returns
 func parseParam(path string) (name, value, newPath string) {
 	if path == "" {
 		return
@@ -84,6 +83,7 @@ func (node *radixTreeNode) childIndex(target byte) int {
 			return mid
 		}
 	}
+
 	return -1
 }
 
@@ -306,65 +306,21 @@ func (tree *radixTree) insert(path string, handler http.HandlerFunc) {
 	tree.root = tree.root.insert(path, path, handler)
 }
 
-// handler returns a handler according to the url path.
-func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
-	var buffer *bytes.Buffer
-
-	v := tree.syncPool.Get()
-	if v == nil {
-		buffer = new(bytes.Buffer)
-	} else {
-		buffer = v.(*bytes.Buffer)
-	}
-
-	handler = tree.search(req, buffer)
-	tree.syncPool.Put(buffer)
-
-	return
-}
-
-// shadowBuffer represents the shadow of bytes.Buffer.
-type shadowBuffer struct {
-	buf []byte
-	off int
-}
-
-// search finds the handler by url path. It will return nil if handler doesn't
+// handler finds the handler by url path. It will return nil if handler doesn't
 // exist.
-func (tree *radixTree) search(
-	req *http.Request, buffer *bytes.Buffer) http.HandlerFunc {
-
+func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 	var (
 		i, j, start, length int
 		value               string
-		path                = cleanPath(req.URL.Path, buffer)
+		bs                  []byte
+		path                = req.URL.Path
 		node                = tree.root
+		buffer              *bytes.Buffer
 	)
-	buffer.Reset()
 
 	n := len(path)
 	for i < n {
-		if node.isParam {
-			start = i
-
-			for i < n && path[i] != Slash {
-				i++
-			}
-
-			value = path[start:i]
-			if node.regex != nil && !node.regex.MatchString(value) {
-				return nil
-			}
-
-			buffer.WriteByte(And)
-			buffer.WriteString(node.chunk)
-			buffer.WriteByte(Equal)
-			buffer.WriteString(value)
-
-			if i == n {
-				break
-			}
-		} else {
+		if !node.isParam {
 			length = len(node.chunk)
 
 			if n-i < length || path[i:i+length] != node.chunk {
@@ -376,28 +332,68 @@ func (tree *radixTree) search(
 				break
 			}
 
-			switch len(node.children) {
-			case 0:
-				return nil
-			case 1:
+			length = len(node.children)
+			if length == 1 {
 				node = node.children[0]
-				continue
+			} else if length > 1 {
+				j = node.childIndex(path[i])
+				if j == -1 {
+					goto NotFound
+				}
+				node = node.children[j]
+			} else {
+				goto NotFound
 			}
-		}
+		} else {
+			start = i
 
-		j = node.childIndex(path[i])
-		if j == -1 {
-			return nil
+			for i < n && path[i] != Slash {
+				i++
+			}
+
+			value = path[start:i]
+			if node.regex != nil && !node.regex.MatchString(value) {
+				goto NotFound
+			}
+
+			if buffer == nil {
+				v := tree.syncPool.Get()
+				if v == nil {
+					buffer = new(bytes.Buffer)
+				} else {
+					buffer = v.(*bytes.Buffer)
+				}
+			}
+
+			buffer.WriteByte(And)
+			buffer.WriteString(node.chunk)
+			buffer.WriteByte(Equal)
+			buffer.WriteString(value)
+
+			if i == n {
+				break
+			}
+
+			if len(node.children) == 0 {
+				goto NotFound
+			}
+
+			node = node.children[0]
 		}
-		node = node.children[j]
 	}
 
-	if node.handler != nil && buffer.Len() > 0 {
-		b := (*shadowBuffer)(unsafe.Pointer(buffer))
-		bs := b.buf[b.off:]
+	handler = node.handler
+	if handler != nil && buffer != nil && buffer.Len() > 0 {
+		bs = buffer.Bytes()
 		req.URL.RawQuery += *(*string)(unsafe.Pointer(&bs))
 	}
-	return node.handler
+
+NotFound:
+	if buffer != nil {
+		buffer.Reset()
+		tree.syncPool.Put(buffer)
+	}
+	return
 }
 
 // traverse uses BFS to traverse the tree.

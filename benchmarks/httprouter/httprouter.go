@@ -3,17 +3,19 @@ package main
 import (
 	"github.com/julienschmidt/httprouter"
 	"log"
+	"expvar"
 	"net/http"
 	"sync"
 	"time"
+	"runtime"
 )
 
 var r *httprouter.Router
 var w http.ResponseWriter
+var count expvar.Int
 var handler = func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	//log.Println(ps)
+	count.Add(1)
 }
-var req *http.Request
 
 func init() {
 	r = httprouter.New()
@@ -48,18 +50,33 @@ func init() {
 	r.GET("/hello", handler)
 }
 
-func main() {
-	var group sync.WaitGroup
+func sequence() {
+	begin := time.Now()
+	for i := 0; i < 10000000; i++ {
+		req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
+		r.ServeHTTP(w, req)
+	}
+	log.Println(time.Now().Sub(begin), count)
+}
+
+func goroutines() {
+	var wg sync.WaitGroup
+	runtime.GOMAXPROCS(4)
 
 	begin := time.Now()
 	for i := 0; i < 10000000; i++ {
-		group.Add(1)
+		wg.Add(1)
 		go func() {
-			req, _ := http.NewRequest("GET", "/user/foobar/1000", nil)
+			req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
 			r.ServeHTTP(w, req)
-			group.Done()
+			wg.Done()
 		}()
 	}
-	group.Wait()
-	log.Println(time.Now().Sub(begin))
+	wg.Wait()
+	log.Println(time.Now().Sub(begin), count)
+}
+
+func main() {
+	sequence()
+	goroutines()
 }

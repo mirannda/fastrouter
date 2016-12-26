@@ -6,16 +6,16 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"sync"
 	"time"
+	"sync"
+	"runtime"
 )
 
 var r *fastrouter.Router
 var w http.ResponseWriter
-var req *http.Request
 var count expvar.Int
 var handler = func(w http.ResponseWriter, req *http.Request) {
-	//	log.Println(req.URL.RawQuery)
+	count.Add(1)
 }
 
 func init() {
@@ -51,22 +51,37 @@ func init() {
 	r.GET("/hello", handler)
 }
 
+func sequence() {
+	begin := time.Now()
+	for i := 0; i < 10000000; i++ {
+		req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
+		r.ServeHTTP(w, req)
+	}
+	log.Println(time.Now().Sub(begin), count)
+}
+
+func goroutines() {
+	var wg sync.WaitGroup
+	runtime.GOMAXPROCS(4)
+
+	begin := time.Now()
+	for i := 0; i < 10000000; i++ {
+		wg.Add(1)
+		go func() {
+			req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
+			r.ServeHTTP(w, req)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	log.Println(time.Now().Sub(begin), count)
+}
+
 func main() {
 	go func() {
 		http.ListenAndServe(":6060", nil)
 	}()
 
-	var group sync.WaitGroup
-
-	begin := time.Now()
-	for i := 0; i < 10000000; i++ {
-		group.Add(1)
-		go func() {
-			req, _ := http.NewRequest("GET", "/user/foobar/1000", nil)
-			r.ServeHTTP(w, req)
-			group.Done()
-		}()
-	}
-	group.Wait()
-	log.Println(time.Now().Sub(begin))
+	sequence()
+	goroutines()
 }
