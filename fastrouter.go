@@ -25,14 +25,10 @@ type Router struct {
 }
 
 // NewRouter returns a new Router pointer.
-func NewRouter(notFoundHandler http.Handler) *Router {
-	if notFoundHandler == nil {
-		notFoundHandler = http.NotFoundHandler()
-	}
-
+func New() *Router {
 	return &Router{
 		trees:           make([]*radixTree, 0),
-		NotFoundHandler: notFoundHandler,
+		NotFoundHandler: http.NotFoundHandler(),
 	}
 }
 
@@ -129,11 +125,9 @@ func (router *Router) insertSubtreePath(
 
 	if node.isParam {
 		if node.regex != nil {
-			path += fmt.Sprintf(
-				"%s%s:%s%s", OpenTag, node.chunk, node.regex, CloseTag,
-			)
+			path += fmt.Sprintf("{%s:%s}", node.chunk, node.regex)
 		} else {
-			path += fmt.Sprintf("%s%s%s", OpenTag, node.chunk, CloseTag)
+			path += fmt.Sprintf("{%s}", node.chunk)
 		}
 	} else {
 		path += node.chunk

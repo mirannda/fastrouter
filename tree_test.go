@@ -1,7 +1,6 @@
 package fastrouter
 
 import (
-	"bytes"
 	"net/http"
 	"testing"
 )
@@ -107,9 +106,8 @@ func TestTree(t *testing.T) {
 
 	for i, c := range cases {
 		req, _ := http.NewRequest("GET", c.in, nil)
-		buffer := new(bytes.Buffer)
 
-		if h := tree.search(req, buffer); (h != nil) != (c.out) {
+		if h := tree.handler(req); (h != nil) != (c.out) {
 			t.Fatalf("case %d: ", i, c, h != nil)
 
 			if i == 3 {

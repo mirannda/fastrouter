@@ -316,8 +316,8 @@ func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 		value  string
 		buffer *bytes.Buffer
 	)
-	path, node, n := req.URL.Path, tree.root, len(req.URL.Path)
 
+	path, node, n := req.URL.Path, tree.root, len(req.URL.Path)
 	for {
 		if !node.isParam {
 			length = len(node.chunk)
