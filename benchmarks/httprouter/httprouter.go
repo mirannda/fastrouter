@@ -1,13 +1,13 @@
 package main
 
 import (
+	"expvar"
 	"github.com/julienschmidt/httprouter"
 	"log"
-	"expvar"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
-	"runtime"
 )
 
 var r *httprouter.Router

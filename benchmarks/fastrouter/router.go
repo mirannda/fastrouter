@@ -6,9 +6,9 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"time"
-	"sync"
 	"runtime"
+	"sync"
+	"time"
 )
 
 var r *fastrouter.Router

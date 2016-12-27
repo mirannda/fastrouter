@@ -306,20 +306,19 @@ func (tree *radixTree) insert(path string, handler http.HandlerFunc) {
 	tree.root = tree.root.insert(path, path, handler)
 }
 
-// handler finds the handler by url path. It will return nil if handler doesn't
-// exist.
+// handler finds the handler by url path.
+// It will return nil if handler doesn't exist.
 func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 	var (
-		i, j, start, length int
-		value               string
-		bs                  []byte
-		path                = req.URL.Path
-		node                = tree.root
-		buffer              *bytes.Buffer
+		i, j   int
+		start  int
+		length int
+		value  string
+		buffer *bytes.Buffer
 	)
+	path, node, n := req.URL.Path, tree.root, len(req.URL.Path)
 
-	n := len(path)
-	for i < n {
+	for {
 		if !node.isParam {
 			length = len(node.chunk)
 
@@ -333,15 +332,16 @@ func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 			}
 
 			length = len(node.children)
-			if length == 1 {
+			switch {
+			case length == 1:
 				node = node.children[0]
-			} else if length > 1 {
+			case length > 1:
 				j = node.childIndex(path[i])
 				if j == -1 {
 					goto NotFound
 				}
 				node = node.children[j]
-			} else {
+			default:
 				goto NotFound
 			}
 		} else {
@@ -384,7 +384,7 @@ func (tree *radixTree) handler(req *http.Request) (handler http.HandlerFunc) {
 
 	handler = node.handler
 	if handler != nil && buffer != nil && buffer.Len() > 0 {
-		bs = buffer.Bytes()
+		bs := buffer.Bytes()
 		req.URL.RawQuery += *(*string)(unsafe.Pointer(&bs))
 	}
 
@@ -393,6 +393,7 @@ NotFound:
 		buffer.Reset()
 		tree.syncPool.Put(buffer)
 	}
+
 	return
 }
 

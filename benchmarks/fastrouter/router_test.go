@@ -9,8 +9,6 @@ import (
 func BenchmarkFastRouter(b *testing.B) {
 	var group sync.WaitGroup
 
-	b.N = 10000000
-
 	for i := 0; i < b.N; i++ {
 		group.Add(1)
 		go func() {
@@ -24,8 +22,6 @@ func BenchmarkFastRouter(b *testing.B) {
 }
 
 func BenchmarkFastRouterP(b *testing.B) {
-	b.N = 10000000
-
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
@@ -35,8 +31,6 @@ func BenchmarkFastRouterP(b *testing.B) {
 }
 
 func BenchmarkFastRouterFor(b *testing.B) {
-	b.N = 10000000
-
 	for i := 0; i < b.N; i++ {
 		req, _ := http.NewRequest("GET", "/uszr/foobar/1000", nil)
 		r.ServeHTTP(w, req)
